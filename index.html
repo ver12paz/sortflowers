@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flower Numbers Game</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Arial Rounded MT Bold', 'Comic Sans MS', cursive;
+  min-height: 100vh;
+  background: linear-gradient(180deg,
+    #4FC3F7 0%, #81D4FA 55%,
+    #A5D6A7 70%, #66BB6A 80%, #388E3C 100%);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+}
+
+/* ---- SUN ---- */
+#sun {
+  position: fixed;
+  top: 18px;
+  right: 70px;
+  width: 88px;
+  height: 88px;
+  background: radial-gradient(circle at 38% 35%, #FFF176, #FFD600);
+  border-radius: 50%;
+  box-shadow: 0 0 30px 10px rgba(255,214,0,0.55);
+  z-index: 1;
+}
+#sun::before {
+  content: '';
+  position: absolute;
+  inset: -18px;
+  background: repeating-conic-gradient(rgba(255,220,0,0.25) 0deg 10deg, transparent 10deg 20deg);
+  border-radius: 50%;
+  animation: spin 10s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- CLOUD ---- */
+.cloud {
+  position: fixed;
+  background: white;
+  border-radius: 100px;
+  opacity: 0.82;
+  animation: drift linear infinite;
+  z-index: 1;
+}
+.cloud span {
+  position: absolute;
+  background: white;
+  border-radius: 50%;
+  display: block;
+}
+@keyframes drift {
+  from { transform: translateX(-280px); }
+  to   { transform: translateX(calc(100vw + 280px)); }
+}
+
+/* ---- HEADER ---- */
+#header {
+  font-size: clamp(1.6rem, 5vw, 2.6rem);
+  color: #fff;
+  text-shadow: 3px 3px 0 #1976D2, -1px -1px 0 #1976D2;
+  padding: 14px 20px 4px;
+  text-align: center;
+  position: relative;
+  z-index: 10;
+}
+#info-bar {
+  font-size: clamp(0.9rem, 2.5vw, 1.25rem);
+  color: #fff;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.4);
+  margin-bottom: 4px;
+  position: relative;
+  z-index: 10;
+}
+#hint {
+  font-size: clamp(0.8rem, 2vw, 1.05rem);
+  background: rgba(255,255,255,0.82);
+  color: #333;
+  padding: 5px 18px;
+  border-radius: 20px;
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 10;
+}
+
+/* ---- GAME AREA ---- */
+#game-area {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 10;
+}
+
+#flowers-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-wrap: nowrap;
+  padding: 0 8px;
+  width: 100%;
+}
+
+/* ---- FLOWER CONTAINER ---- */
+.flower-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: grab;
+  touch-action: none;
+  position: relative;
+  flex-shrink: 0;
+}
+.flower-container:active { cursor: grabbing; }
+
+.flower-head { position: relative; flex-shrink: 0; }
+
+.stem {
+  background: linear-gradient(90deg, #33691E, #558B2F, #33691E);
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: height 0.2s;
+}
+
+/* ---- DRAG STATE ---- */
+.flower-container.is-dragging { opacity: 0.25; pointer-events: none; }
+
+.flower-container.drop-target .flower-head svg {
+  filter: drop-shadow(0 0 10px #FFD600) drop-shadow(0 0 20px rgba(255,214,0,0.7));
+}
+
+/* ---- APPEAR ANIMATION ---- */
+@keyframes pop-in {
+  0%   { transform: translateY(70px) scale(0); opacity: 0; }
+  55%  { transform: translateY(-18px) scale(1.2); opacity: 1; }
+  75%  { transform: translateY(6px) scale(0.93); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.flower-container.appearing {
+  animation: pop-in 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ---- FLY-AWAY ANIMATION (correct order) ---- */
+@keyframes fly-away {
+  0%   { transform: translateY(0)    scaleX(1);    opacity: 1; }
+  18%  { transform: translateY(-12px) scaleX(1.06); opacity: 1; }
+  100% { transform: translateY(-580px) scaleX(0.7); opacity: 0; }
+}
+.flower-container.flying {
+  animation: fly-away 1.15s cubic-bezier(0.2, 0.6, 0.35, 1) forwards;
+  pointer-events: none;
+}
+
+/* ---- DRAG GHOST ---- */
+#drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 1000;
+  display: none;
+  transform: scale(1.15) rotate(-4deg);
+  transform-origin: top center;
+}
+
+/* ---- MESSAGE ---- */
+#message {
+  display: none;
+  position: fixed;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  background: linear-gradient(135deg, #ffffff, #fffde7);
+  border: 4px solid #FFD600;
+  padding: 22px 45px;
+  border-radius: 28px;
+  font-size: clamp(1.3rem, 4vw, 2.2rem);
+  text-align: center;
+  z-index: 500;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.28);
+}
+@keyframes msg-in {
+  0%   { transform: translate(-50%,-50%) scale(0) rotate(-8deg); }
+  65%  { transform: translate(-50%,-50%) scale(1.1) rotate(2deg); }
+  100% { transform: translate(-50%,-50%) scale(1) rotate(0deg); }
+}
+#message.visible {
+  display: block;
+  animation: msg-in 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
+}
+</style>
+</head>
+<body>
+
+<div id="sun"></div>
+
+<div id="header">🌸 Flower Numbers 🌸</div>
+<div id="info-bar">Level <span id="level-num">1</span> &nbsp;·&nbsp; <span id="flower-count">3</span> flowers</div>
+<div id="hint">Drag the flowers so the numbers go from smallest to biggest!</div>
+
+<div id="game-area">
+  <div id="flowers-row"></div>
+</div>
+
+<div id="drag-ghost"></div>
+<div id="message"></div>
+
+<script>
+// ─── PETAL COLOUR PAIRS ────────────────────────────────────────────────
+const COLORS = [
+  ['#FF69B4','#C2185B'], ['#FF6B6B','#B71C1C'], ['#FFA726','#E65100'],
+  ['#FFD54F','#F57F17'], ['#AED581','#558B2F'], ['#26C6DA','#00838F'],
+  ['#64B5F6','#1565C0'], ['#CE93D8','#6A1B9A'], ['#F48FB1','#880E4F'],
+  ['#80DEEA','#00697A'], ['#FFAB91','#BF360C'], ['#C5E1A5','#2E7D32'],
+  ['#FFF176','#F9A825'], ['#B39DDB','#4527A0'], ['#EF9A9A','#7F0000'],
+  ['#80CBC4','#00695C'], ['#FFCC80','#E65100'], ['#A5D6A7','#1B5E20'],
+  ['#F8BBD0','#880E4F'], ['#B2EBF2','#006064']
+];
+
+// ─── STATE ────────────────────────────────────────────────────────────
+let count = 3;
+let nums  = [];
+let animating = false;
+
+// ─── HELPERS ──────────────────────────────────────────────────────────
+const shuffle = a => {
+  a = [...a];
+  for (let i = a.length-1; i > 0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+};
+
+const sorted = a => a.every((v,i) => i===0 || v >= a[i-1]);
+
+function genNums() {
+  const displayCount = Math.min(count, 15);
+  const minNum = count > 15 ? count - 14 : 1;
+  const pool = Array.from({length: displayCount}, (_, i) => minNum + i);
+  let tries = 0;
+  do { nums = shuffle(pool); tries++; } while (sorted(nums) && tries < 200);
+}
+
+// ─── SIZING ───────────────────────────────────────────────────────────
+function flowerSize() {
+  const n   = nums.length || Math.min(count, 15);
+  const gap = n > 12 ? 3 : n > 8 ? 6 : 9;
+  const szW = (window.innerWidth - 16 - gap*(n-1)) / n;
+  const szH = (window.innerHeight - 160) / 2.4;
+  return Math.max(55, Math.min(170, Math.min(szW, szH)));
+}
+
+// ─── SVG FLOWER ───────────────────────────────────────────────────────
+function makeSVG(num, colorIdx, size) {
+  const [c1, c2] = COLORS[colorIdx % COLORS.length];
+  const uid = `f${colorIdx}_${num}_${Date.now()}`;
+  const fs  = size > 72 ? 26 : size > 58 ? 22 : size > 46 ? 18 : size > 36 ? 15 : 13;
+
+  const petals = Array.from({length:8},(_,i)=>
+    `<ellipse cx="50" cy="26" rx="11" ry="21"
+       fill="url(#pg${uid}${i})"
+       transform="rotate(${i*45},50,50)" opacity="0.88"/>`
+  ).join('');
+
+  const gradDefs = Array.from({length:8},(_,i)=>
+    `<radialGradient id="pg${uid}${i}" cx="45%" cy="25%" r="60%">
+       <stop offset="0%" stop-color="${c1}"/>
+       <stop offset="100%" stop-color="${c2}"/>
+     </radialGradient>`
+  ).join('');
+
+  return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
+      style="width:${size}px;height:${size}px;overflow:visible;display:block">
+    <defs>
+      ${gradDefs}
+      <radialGradient id="cg${uid}" cx="38%" cy="32%" r="65%">
+        <stop offset="0%" stop-color="#FFF9C4"/>
+        <stop offset="100%" stop-color="#FFD600"/>
+      </radialGradient>
+    </defs>
+    ${petals}
+    <circle cx="50" cy="50" r="25" fill="url(#cg${uid})" stroke="#F9A825" stroke-width="2.5"/>
+    <text x="50" y="${50+fs*0.38}" text-anchor="middle"
+      font-size="${fs}" font-weight="900" fill="#4E342E"
+      font-family="Arial Rounded MT Bold,Arial,sans-serif">${num}</text>
+  </svg>`;
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────
+function render() {
+  const row  = document.getElementById('flowers-row');
+  const sz   = flowerSize();
+  const stemH = Math.max(50, sz * 1.4);
+  const stemW = Math.max(7, Math.round(sz * 0.1));
+  const gap  = count > 14 ? 2 : count > 10 ? 5 : count > 6 ? 8 : 11;
+
+  row.innerHTML = '';
+  row.style.gap = gap + 'px';
+
+  nums.forEach((n, idx) => {
+    const c = document.createElement('div');
+    c.className = 'flower-container appearing';
+    c.dataset.idx = idx;
+    c.style.animationDelay = (idx * 0.07) + 's';
+
+    const head = document.createElement('div');
+    head.className = 'flower-head';
+    head.innerHTML = makeSVG(n, idx, sz);
+
+    const stem = document.createElement('div');
+    stem.className = 'stem';
+    stem.style.cssText = `width:${stemW}px;height:${stemH}px;`;
+
+    c.append(head, stem);
+    row.appendChild(c);
+
+    c.addEventListener('pointerdown', onDown, {passive:false});
+  });
+
+  document.getElementById('level-num').textContent   = count - 2;
+  document.getElementById('flower-count').textContent = nums.length;
+}
+
+// ─── DRAG / DROP ──────────────────────────────────────────────────────
+let srcIdx  = null;
+let ghost   = null;
+let ghostW  = 0;
+let ghostH  = 0;
+
+function onDown(e) {
+  if (animating) return;
+  e.preventDefault();
+
+  const el  = e.currentTarget;
+  srcIdx    = parseInt(el.dataset.idx);
+
+  el.setPointerCapture(e.pointerId);
+
+  // Build ghost
+  const g   = document.getElementById('drag-ghost');
+  const sz  = flowerSize();
+  const stemH = Math.max(50, sz * 1.4);
+  const stemW = Math.max(7, Math.round(sz * 0.1));
+  g.innerHTML =
+    `<div style="display:flex;flex-direction:column;align-items:center;">` +
+    makeSVG(nums[srcIdx], srcIdx, sz) +
+    `<div style="width:${stemW}px;height:${stemH}px;background:linear-gradient(90deg,#33691E,#558B2F,#33691E);border-radius:6px;"></div>` +
+    `</div>`;
+  g.style.display = 'block';
+  ghostW = el.offsetWidth;
+  ghostH = el.offsetHeight;
+  g.style.width  = ghostW + 'px';
+  moveGhost(e.clientX, e.clientY);
+
+  el.classList.add('is-dragging');
+
+  el.addEventListener('pointermove', onMove, {passive:false});
+  el.addEventListener('pointerup',   onUp);
+  el.addEventListener('pointercancel', onUp);
+}
+
+function moveGhost(x, y) {
+  const g = document.getElementById('drag-ghost');
+  g.style.left = (x - ghostW/2) + 'px';
+  g.style.top  = (y - ghostH/2) + 'px';
+}
+
+function getSlotAt(x, y) {
+  const g = document.getElementById('drag-ghost');
+  g.style.display = 'none';
+  const el = document.elementFromPoint(x, y);
+  g.style.display = 'block';
+  return el && el.closest('.flower-container');
+}
+
+function clearDropTargets() {
+  document.querySelectorAll('.drop-target').forEach(e => e.classList.remove('drop-target'));
+}
+
+function onMove(e) {
+  e.preventDefault();
+  moveGhost(e.clientX, e.clientY);
+  clearDropTargets();
+  const t = getSlotAt(e.clientX, e.clientY);
+  if (t && parseInt(t.dataset.idx) !== srcIdx) t.classList.add('drop-target');
+}
+
+function onUp(e) {
+  const el = e.currentTarget;
+  el.removeEventListener('pointermove', onMove);
+  el.removeEventListener('pointerup',   onUp);
+  el.removeEventListener('pointercancel', onUp);
+
+  const t = getSlotAt(e.clientX, e.clientY);
+
+  const g = document.getElementById('drag-ghost');
+  g.style.display = 'none';
+
+  clearDropTargets();
+
+  el.classList.remove('is-dragging');
+
+  if (t && parseInt(t.dataset.idx) !== srcIdx) {
+    const ti = parseInt(t.dataset.idx);
+    [nums[srcIdx], nums[ti]] = [nums[ti], nums[srcIdx]];
+    const sz = flowerSize();
+    const containers = document.querySelectorAll('.flower-container');
+    containers[srcIdx].querySelector('.flower-head').innerHTML = makeSVG(nums[srcIdx], srcIdx, sz);
+    containers[ti].querySelector('.flower-head').innerHTML     = makeSVG(nums[ti],     ti,     sz);
+    if (sorted(nums)) setTimeout(triggerWin, 320);
+  }
+
+  srcIdx = null;
+}
+
+// ─── WIN ──────────────────────────────────────────────────────────────
+function triggerWin() {
+  animating = true;
+  const containers = document.querySelectorAll('.flower-container');
+  const msg = document.getElementById('message');
+  const isMax = count >= 20;
+
+  msg.textContent = isMax ? '🎉 Amazing! You did them all! 🎉' : '🌸 Great job! 🌸';
+  msg.classList.add('visible');
+
+  containers.forEach((c, i) => {
+    c.classList.remove('appearing');
+    setTimeout(() => c.classList.add('flying'), i * 80);
+  });
+
+  const delay = containers.length * 80 + 1300;
+
+  setTimeout(() => {
+    msg.classList.remove('visible');
+    if (isMax) count = 3; else count++;
+    genNums();
+    animating = false;
+    render();
+  }, delay);
+}
+
+// ─── CLOUDS ───────────────────────────────────────────────────────────
+function addClouds() {
+  const defs = [
+    {w:200, h:65, top:'6%',  dur:38, delay:0},
+    {w:130, h:48, top:'14%', dur:55, delay:-18},
+    {w:180, h:58, top:'9%',  dur:44, delay:-35},
+  ];
+  defs.forEach(({w,h,top,dur,delay}) => {
+    const cl = document.createElement('div');
+    cl.className = 'cloud';
+    cl.style.cssText = `width:${w}px;height:${h}px;top:${top};animation-duration:${dur}s;animation-delay:${delay}s;`;
+    const puff = (pw,ph,pt,pl) => {
+      const s = document.createElement('span');
+      s.style.cssText = `width:${pw}px;height:${ph}px;top:${pt}px;left:${pl}px;`;
+      cl.appendChild(s);
+    };
+    puff(w*0.48, h*1.35, -h*0.42, w*0.18);
+    puff(w*0.36, h*1.1,  -h*0.22, w*0.52);
+    document.body.appendChild(cl);
+  });
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────
+addClouds();
+genNums();
+render();
+
+window.addEventListener('resize', () => { if (!animating) render(); });
+</script>
+</body>
+</html>
