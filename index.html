@@ -196,6 +196,68 @@ body {
   display: block;
   animation: msg-in 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
 }
+
+/* ---- MUTE BUTTON ---- */
+#mute-btn {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  font-size: 1.4rem;
+  background: rgba(255,255,255,0.85);
+  border: 2px solid rgba(255,255,255,0.6);
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  cursor: pointer;
+  z-index: 200;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#mute-btn:hover { background: #fff; }
+
+/* ---- CONFETTI CANVAS ---- */
+#confetti-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 400;
+  display: none;
+}
+
+/* ---- BALLOON CANVAS ---- */
+#balloon-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 700;
+  display: none;
+}
+
+/* ---- MILESTONE OVERLAY ---- */
+#milestone-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.52);
+  z-index: 650;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+#milestone-img {
+  max-width: 80vw;
+  max-height: 75vh;
+  border-radius: 20px;
+  box-shadow: 0 12px 60px rgba(0,0,0,0.55);
+  animation: img-pop 0.55s cubic-bezier(0.34,1.56,0.64,1) forwards;
+}
+@keyframes img-pop {
+  0%   { transform: scale(0.2) rotate(-6deg); opacity: 0; }
+  100% { transform: scale(1)   rotate(0deg);  opacity: 1; }
+}
 </style>
 </head>
 <body>
@@ -212,8 +274,21 @@ body {
 
 <div id="drag-ghost"></div>
 <div id="message"></div>
+<canvas id="confetti-canvas"></canvas>
+<canvas id="balloon-canvas"></canvas>
+<div id="milestone-overlay">
+  <img id="milestone-img" src="" alt="">
+</div>
+<button id="mute-btn" onclick="toggleMute()" title="Toggle music">🎵</button>
 
 <script>
+// ─── MILESTONE IMAGES (every 10 levels) ──────────────────────────────
+// index 0 = level 10, index 1 = level 20, index 2 = level 30, …
+const MILESTONE_IMAGES = [
+  // 'your_image_1.png',
+  // 'your_image_2.png',
+];
+
 // ─── PETAL COLOUR PAIRS ────────────────────────────────────────────────
 const COLORS = [
   ['#FF69B4','#C2185B'], ['#FF6B6B','#B71C1C'], ['#FFA726','#E65100'],
@@ -431,6 +506,8 @@ function triggerWin() {
 
   msg.textContent = isMax ? '🎉 Amazing! You did them all! 🎉' : '🌸 Great job! 🌸';
   msg.classList.add('visible');
+  launchConfetti();
+  playWinJingle();
 
   containers.forEach((c, i) => {
     c.classList.remove('appearing');
@@ -441,11 +518,116 @@ function triggerWin() {
 
   setTimeout(() => {
     msg.classList.remove('visible');
+    const completedLevel = count - 2;
     if (isMax) count = 3; else count++;
     genNums();
-    animating = false;
     render();
+    if (completedLevel % 10 === 0) {
+      showMilestone(completedLevel, () => { animating = false; });
+    } else {
+      animating = false;
+    }
   }, delay);
+}
+
+// ─── MILESTONE ────────────────────────────────────────────────────────
+function showMilestone(level, onDone) {
+  const idx = level / 10 - 1;
+  const src = MILESTONE_IMAGES[idx];
+  if (!src) { onDone(); return; }
+
+  const overlay = document.getElementById('milestone-overlay');
+  const img     = document.getElementById('milestone-img');
+  img.src = src;
+  overlay.style.transition = 'none';
+  overlay.style.opacity    = '0';
+  overlay.style.display    = 'flex';
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    overlay.style.transition = 'opacity 0.7s ease';
+    overlay.style.opacity    = '1';
+  }));
+
+  overlay.onclick = () => {
+    overlay.onclick = null;
+    launchBalloons();
+    overlay.style.transition = 'opacity 1s ease';
+    overlay.style.opacity    = '0';
+    setTimeout(() => { overlay.style.display = 'none'; onDone(); }, 1000);
+  };
+}
+
+// ─── BALLOONS ─────────────────────────────────────────────────────────
+function launchBalloons() {
+  const canvas = document.getElementById('balloon-canvas');
+  const ctx    = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.style.display = 'block';
+
+  const BCOLORS = [
+    '#FF69B4','#FFD600','#FF6B6B','#64B5F6',
+    '#AED581','#CE93D8','#FFA726','#80DEEA','#fff176'
+  ];
+
+  const balloons = Array.from({length: 18}, (_, i) => ({
+    x:     (canvas.width / 18) * i + Math.random() * (canvas.width / 18),
+    y:     canvas.height + 60 + Math.random() * 180,
+    vx:    (Math.random() - 0.5) * 1.0,
+    vy:    -(1.8 + Math.random() * 2.2),
+    sway:  Math.random() * Math.PI * 2,
+    swayS: 0.018 + Math.random() * 0.018,
+    r:     24 + Math.random() * 20,
+    color: BCOLORS[Math.floor(Math.random() * BCOLORS.length)],
+  }));
+
+  let start = null;
+  function draw(ts) {
+    if (!start) start = ts;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let any = false;
+    balloons.forEach(b => {
+      b.sway += b.swayS;
+      b.x    += b.vx + Math.sin(b.sway) * 0.9;
+      b.y    += b.vy;
+      if (b.y + b.r * 2 > 0) any = true;
+
+      ctx.save();
+      ctx.translate(b.x, b.y);
+
+      ctx.beginPath();
+      ctx.ellipse(0, 0, b.r, b.r * 1.25, 0, 0, Math.PI * 2);
+      ctx.fillStyle = b.color;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.ellipse(-b.r * 0.28, -b.r * 0.38, b.r * 0.22, b.r * 0.16, -0.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fill();
+
+      const knotY = b.r * 1.25;
+      ctx.beginPath();
+      ctx.arc(0, knotY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = b.color;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(0, knotY + 4);
+      ctx.quadraticCurveTo(b.r * 0.5, knotY + b.r * 1.2, 0, knotY + b.r * 2.4);
+      ctx.strokeStyle = 'rgba(80,80,80,0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
+    });
+
+    if (any && ts - start < 6000) {
+      requestAnimationFrame(draw);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.display = 'none';
+    }
+  }
+  requestAnimationFrame(draw);
 }
 
 // ─── CLOUDS ───────────────────────────────────────────────────────────
@@ -468,6 +650,161 @@ function addClouds() {
     puff(w*0.36, h*1.1,  -h*0.22, w*0.52);
     document.body.appendChild(cl);
   });
+}
+
+// ─── BACKGROUND MUSIC ─────────────────────────────────────────────────
+let audioCtx = null, masterGain = null, isMuted = false;
+let nextNoteTime = 0, noteIdx = 0;
+
+const NF = {
+  C4:261.63, D4:293.66, E4:329.63, F4:349.23,
+  G4:392.00, A4:440.00, B4:493.88,
+  C5:523.25, D5:587.33, E5:659.25
+};
+
+const MELODY = [
+  ['G4',0.35],['A4',0.35],['G4',0.35],['E4',0.35],
+  ['C4',0.7], ['D4',0.35],['E4',0.35],
+  ['E4',0.35],['F4',0.35],['E4',0.35],['D4',0.35],
+  ['C4',1.05],
+  ['G4',0.35],['A4',0.35],['B4',0.35],['A4',0.35],
+  ['G4',0.7], ['E4',0.35],['G4',0.35],
+  ['A4',0.35],['G4',0.35],['E4',0.35],['D4',0.35],
+  ['C4',1.05],
+  ['E4',0.35],['G4',0.35],['A4',0.35],['C5',0.35],
+  ['B4',0.7], ['A4',0.35],['G4',0.35],
+  ['A4',0.35],['B4',0.35],['A4',0.35],['G4',0.35],
+  ['E4',1.05],
+  ['D4',0.35],['E4',0.35],['D4',0.35],['C4',0.35],
+  ['G4',0.7], ['F4',0.35],['E4',0.35],
+  ['D4',0.35],['E4',0.35],['D4',0.35],['C4',0.35],
+  ['C4',1.4],
+];
+
+function playNote(freq, when, dur) {
+  const osc = audioCtx.createOscillator();
+  const env = audioCtx.createGain();
+  osc.connect(env);
+  env.connect(masterGain);
+  osc.type = 'triangle';
+  osc.frequency.value = freq;
+  env.gain.setValueAtTime(0, when);
+  env.gain.linearRampToValueAtTime(0.35, when + 0.03);
+  env.gain.setValueAtTime(0.35, when + dur * 0.7);
+  env.gain.linearRampToValueAtTime(0, when + dur * 0.95);
+  osc.start(when);
+  osc.stop(when + dur);
+}
+
+function schedule() {
+  while (nextNoteTime < audioCtx.currentTime + 0.4) {
+    const [note, dur] = MELODY[noteIdx++ % MELODY.length];
+    playNote(NF[note], nextNoteTime, dur);
+    nextNoteTime += dur;
+  }
+  setTimeout(schedule, 120);
+}
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.18;
+  masterGain.connect(audioCtx.destination);
+  nextNoteTime = audioCtx.currentTime + 0.15;
+  noteIdx = 0;
+  schedule();
+}
+
+function toggleMute() {
+  if (!audioCtx) initAudio();
+  isMuted = !isMuted;
+  masterGain.gain.value = isMuted ? 0 : 0.18;
+  document.getElementById('mute-btn').textContent = isMuted ? '🔇' : '🎵';
+}
+
+document.addEventListener('pointerdown', () => { if (!audioCtx) initAudio(); }, {once:true});
+
+// ─── WIN JINGLE ───────────────────────────────────────────────────────
+function playWinJingle() {
+  if (!audioCtx) return;
+  const jingle = [
+    [NF.C4,0],[NF.E4,0.13],[NF.G4,0.26],[NF.C5,0.39],[NF.E5,0.58]
+  ];
+  const t = audioCtx.currentTime;
+  jingle.forEach(([freq, delay]) => {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.connect(env); env.connect(masterGain);
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const w = t + delay;
+    env.gain.setValueAtTime(0, w);
+    env.gain.linearRampToValueAtTime(0.55, w + 0.04);
+    env.gain.setValueAtTime(0.55, w + 0.18);
+    env.gain.linearRampToValueAtTime(0, w + 0.38);
+    osc.start(w); osc.stop(w + 0.4);
+  });
+}
+
+// ─── CONFETTI ─────────────────────────────────────────────────────────
+function launchConfetti() {
+  const canvas = document.getElementById('confetti-canvas');
+  const ctx    = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.style.display = 'block';
+
+  const CONF_COLORS = [
+    '#FF69B4','#FFD600','#FF6B6B','#64B5F6',
+    '#AED581','#CE93D8','#FFA726','#26C6DA','#fff176'
+  ];
+
+  const particles = Array.from({length: 110}, () => ({
+    x:  Math.random() * canvas.width,
+    y: -20 - Math.random() * 120,
+    vx: (Math.random() - 0.5) * 5,
+    vy: 2.5 + Math.random() * 4.5,
+    rot:  Math.random() * Math.PI * 2,
+    rotV: (Math.random() - 0.5) * 0.18,
+    color: CONF_COLORS[Math.floor(Math.random() * CONF_COLORS.length)],
+    w: 7 + Math.random() * 10,
+    h: 4 + Math.random() * 7,
+    isCircle: Math.random() < 0.35,
+  }));
+
+  let start = null;
+  function draw(ts) {
+    if (!start) start = ts;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let anyVisible = false;
+    particles.forEach(p => {
+      p.x  += p.vx;
+      p.y  += p.vy;
+      p.vy += 0.09;
+      p.rot += p.rotV;
+      if (p.y < canvas.height + 40) anyVisible = true;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      if (p.isCircle) {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      }
+      ctx.restore();
+    });
+    if (anyVisible && ts - start < 4500) {
+      requestAnimationFrame(draw);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.display = 'none';
+    }
+  }
+  requestAnimationFrame(draw);
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────
